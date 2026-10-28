@@ -1,0 +1,30 @@
+{
+  "name": "nwash-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:migrate": "prisma migrate deploy",
+    "db:generate": "prisma generate",
+    "seed:dev": "node scripts/seed-dev.js",
+    "uploads:cleanup": "node scripts/cleanup-uploads.js",
+    "test:prepare": "node scripts/prepare-test-db.js",
+    "test:unit": "node --test test/contract.test.js test/multipart.test.js test/storage.test.js",
+    "test": "npm run test:prepare && node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "argon2": "0.45.1",
+    "busboy": "1.6.0",
+    "express": "5.2.1",
+    "jose": "6.2.13"
+  },
+  "devDependencies": {
+    "prisma": "6.19.3"
+  }
+}

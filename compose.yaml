@@ -1,0 +1,80 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    working_dir: /app
+    command: ["sh", "-c", "npm run db:migrate && exec node --watch src/server.js"]
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      UPLOAD_DIR: /app/uploads
+      MAX_PHOTOS: ${MAX_PHOTOS:-20}
+      MAX_AUDIO: ${MAX_AUDIO:-10}
+      MAX_PHOTO_BYTES: ${MAX_PHOTO_BYTES:-15728640}
+      MAX_AUDIO_BYTES: ${MAX_AUDIO_BYTES:-31457280}
+      MAX_REQUEST_BYTES: ${MAX_REQUEST_BYTES:-209715200}
+      MAX_METADATA_BYTES: ${MAX_METADATA_BYTES:-131072}
+      UPLOAD_IP_LIMIT: ${UPLOAD_IP_LIMIT:-30}
+      UPLOAD_USER_LIMIT: ${UPLOAD_USER_LIMIT:-60}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tap}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-tap_renovation}?schema=public
+      TEST_DATABASE_URL: postgresql://${POSTGRES_USER:-tap}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres_test:5432/tap_renovation_test?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_ISSUER: ${JWT_ISSUER:-nwash-api}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-nwash-mobile}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
+    ports:
+      - "${API_BIND_IP:-127.0.0.1}:8000:8000"
+    volumes:
+      - type: bind
+        source: .
+        target: /app
+      - type: volume
+        target: /app/node_modules
+      - type: volume
+        source: issue_uploads
+        target: /app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8000/api/v1/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tap}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-tap_renovation}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  postgres_test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tap}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: tap_renovation_test
+    ports:
+      - "127.0.0.1:5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+  issue_uploads:

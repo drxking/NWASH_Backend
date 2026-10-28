@@ -1,0 +1,9 @@
+node_modules
+data
+uploads
+.env
+.git
+.agents
+.aws
+.codex
+*.log

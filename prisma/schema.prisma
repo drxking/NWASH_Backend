@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Report {
+  id             String   @id @db.Uuid
+  clientReportId String   @unique @map("client_report_id") @db.Uuid
+  category       String   @db.VarChar(80)
+  description    String?  @db.VarChar(5000)
+  latitude       Float
+  longitude      Float
+  capturedAt     DateTime @map("captured_at") @db.Timestamptz(3)
+  receivedAt     DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+  media          Media[]
+
+  @@index([receivedAt(sort: Desc), id(sort: Desc)])
+  @@map("reports")
+}
+
+model Media {
+  id           String    @id @db.Uuid
+  reportId     String    @map("report_id") @db.Uuid
+  report       Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  kind         MediaKind
+  filename     String
+  originalName String    @map("original_name")
+  mimeType     String    @map("mime_type")
+  sizeBytes    Int       @map("size_bytes")
+
+  @@index([reportId])
+  @@map("media")
+}
+
+enum MediaKind {
+  photo
+  video
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  fullName     String    @map("full_name") @db.VarChar(100)
+  email        String    @unique @db.VarChar(254)
+  passwordHash String    @map("password_hash")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  disabledAt   DateTime? @map("disabled_at") @db.Timestamptz(3)
+  issues       Issue[]
+
+  @@map("users")
+}
+
+model Issue {
+  id                String          @id @default(uuid()) @db.Uuid
+  ownerId           String          @map("owner_id") @db.Uuid
+  owner             User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  clientIssueId     String          @map("client_issue_id") @db.VarChar(128)
+  clientCreatedAt   DateTime        @map("client_created_at") @db.Timestamptz(3)
+  clientUpdatedAt   DateTime        @map("client_updated_at") @db.Timestamptz(3)
+  receivedAt        DateTime        @default(now()) @map("received_at") @db.Timestamptz(3)
+  description       String          @db.VarChar(10000)
+  locationStatus    LocationStatus  @map("location_status")
+  locationSource    LocationSource? @map("location_source")
+  latitude          Float?
+  longitude         Float?
+  accuracy          Float?
+  locationTimestamp BigInt?         @map("location_timestamp")
+  fingerprint       String          @db.Char(64)
+  attachments       Attachment[]
+
+  @@unique([ownerId, clientIssueId])
+  @@index([ownerId, clientCreatedAt(sort: Desc), id(sort: Desc)])
+  @@map("issues")
+}
+
+model Attachment {
+  id                 String         @id @default(uuid()) @db.Uuid
+  issueId            String         @map("issue_id") @db.Uuid
+  issue              Issue          @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  clientAttachmentId String         @map("client_attachment_id") @db.VarChar(128)
+  kind               AttachmentKind
+  mimeType           String         @map("mime_type")
+  sizeBytes          Int            @map("size_bytes")
+  sha256             String         @db.Char(64)
+  storageKey         String         @unique @map("storage_key")
+  createdAt          DateTime       @map("created_at") @db.Timestamptz(3)
+  durationMs         Float?         @map("duration_ms")
+
+  @@unique([issueId, clientAttachmentId])
+  @@map("attachments")
+}
+
+enum LocationStatus {
+  none
+  unavailable
+  captured
+}
+
+enum LocationSource {
+  manual
+}
+
+enum AttachmentKind {
+  photo
+  audio
+}
