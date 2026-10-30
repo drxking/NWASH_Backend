@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto';
+
 export function loadConfig(env = process.env) {
   if (!env.DATABASE_URL) throw new Error('DATABASE_URL is required');
   if (!env.JWT_SECRET?.trim() || Buffer.byteLength(env.JWT_SECRET, 'utf8') < 32) {
@@ -15,6 +17,9 @@ export function loadConfig(env = process.env) {
     return value;
   };
   return {
+    deviceHmacSecret: env.DEVICE_HMAC_SECRET || createHmac('sha256', env.JWT_SECRET).update('nwash/device-recognition/v1').digest('hex'),
+    deviceHmacVersion: env.DEVICE_HMAC_VERSION || (env.DEVICE_HMAC_SECRET ? 'v1' : 'jwt-v1'),
+    legacyAuthEnabled: env.LEGACY_AUTH_ENABLED !== 'false',
     databaseUrl: env.DATABASE_URL,
     jwtSecret: new TextEncoder().encode(env.JWT_SECRET),
     jwtIssuer: env.JWT_ISSUER || 'nwash-api',

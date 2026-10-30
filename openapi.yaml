@@ -4,51 +4,135 @@ info:
   version: 1.0.0
   description: Authenticated immutable issue snapshots. Device times are client reported.
 servers:
-  - url: http://127.0.0.1:8000/api/v1
-    description: Development (use the computer LAN IP for a physical phone)
+- url: http://127.0.0.1:8000/api/v1
+  description: Development (use the computer LAN IP for a physical phone)
 paths:
   /auth/signup:
     post:
-      summary: Create an account and session
+      summary: Create phone account and device binding; return session
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              required: [fullName, email, password]
-              properties:
-                fullName: { type: string, minLength: 1, maxLength: 100 }
-                email: { type: string, format: email }
-                password: { type: string, minLength: 8, maxLength: 128 }
+              oneOf:
+              - type: object
+                additionalProperties: false
+                required:
+                - phoneNumber
+                - device
+                - fullName
+                - address
+                properties:
+                  phoneNumber: &id001
+                    type: string
+                    example: '+9779812345678'
+                  device: &id002
+                    $ref: '#/components/schemas/Device'
+                  fullName: &id003
+                    type: string
+                    maxLength: 100
+                  address: &id004
+                    type: string
+                    maxLength: 500
+              - type: object
+                additionalProperties: false
+                required:
+                - fullName
+                - email
+                - password
+                properties:
+                  fullName:
+                    type: string
+                    minLength: 1
+                    maxLength: 100
+                  email:
+                    type: string
+                    format: email
+                  password:
+                    type: string
+                    minLength: 8
+                    maxLength: 128
+            example:
+              phoneNumber: '+9779812345678'
+              device:
+                platform: android
+                identifierType: android_id
+                identifier: 1234567890abcdef
+              fullName: Sam Example
+              address: Kathmandu
       responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Session' } } } }
-        '400': { $ref: '#/components/responses/ApiError' }
-        '409': { $ref: '#/components/responses/ApiError' }
-        '429': { $ref: '#/components/responses/ApiError' }
+        '201':
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneSession'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '409':
+          $ref: '#/components/responses/ApiError'
+        '429':
+          $ref: '#/components/responses/ApiError'
+        '403':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
   /auth/login:
     post:
-      summary: Sign in with email and password
+      summary: Login with phone and registered Android ID/iOS IDFV; legacy email supported
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              required: [email, password]
-              properties:
-                email: { type: string, format: email }
-                password: { type: string }
+              oneOf:
+              - type: object
+                additionalProperties: false
+                required:
+                - phoneNumber
+                - device
+                properties:
+                  phoneNumber: *id001
+                  device: *id002
+              - type: object
+                additionalProperties: false
+                required:
+                - email
+                - password
+                properties:
+                  email:
+                    type: string
+                    format: email
+                  password:
+                    type: string
+            example:
+              phoneNumber: '+9779812345678'
+              device:
+                platform: android
+                identifierType: android_id
+                identifier: 1234567890abcdef
       responses:
-        '200': { description: Signed in, content: { application/json: { schema: { $ref: '#/components/schemas/Session' } } } }
-        '400': { $ref: '#/components/responses/ApiError' }
-        '401': { $ref: '#/components/responses/ApiError' }
-        '429': { $ref: '#/components/responses/ApiError' }
+        '200':
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneSession'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '429':
+          $ref: '#/components/responses/ApiError'
+        '403':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
   /auth/me:
     get:
-      security: [{ bearerAuth: [] }]
+      security:
+      - bearerAuth: []
       summary: Read the signed-in user
       responses:
         '200':
@@ -57,55 +141,81 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [user]
+                required:
+                - user
                 properties:
-                  user: { $ref: '#/components/schemas/User' }
-        '401': { $ref: '#/components/responses/ApiError' }
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/ApiError'
   /issues:
     post:
-      security: [{ bearerAuth: [] }]
+      security:
+      - bearerAuth: []
       summary: Upload one complete immutable issue snapshot
-      description: >-
-        Idempotency-Key equals metadata.clientIssueId. Each attachment has exactly one
-        binary part named media:<clientAttachmentId>. Multipart part and JSON key order
-        do not affect idempotency. Failed requests must retain client files.
+      description: Idempotency-Key equals metadata.clientIssueId. Each attachment
+        has exactly one binary part named media:<clientAttachmentId>. Multipart part
+        and JSON key order do not affect idempotency. Failed requests must retain
+        client files.
       parameters:
-        - in: header
-          name: Idempotency-Key
-          required: true
-          schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,128}$
       requestBody:
         required: true
         content:
           multipart/form-data:
             schema:
               type: object
-              required: [metadata]
+              required:
+              - metadata
               properties:
-                metadata: { $ref: '#/components/schemas/IssueUpload' }
-              additionalProperties: { type: string, format: binary }
+                metadata:
+                  $ref: '#/components/schemas/IssueUpload'
+              additionalProperties:
+                type: string
+                format: binary
             encoding:
-              metadata: { contentType: application/json }
+              metadata:
+                contentType: application/json
       responses:
-        '201': { $ref: '#/components/responses/IssueSuccess' }
-        '200': { $ref: '#/components/responses/IssueSuccess' }
-        '400': { $ref: '#/components/responses/ApiError' }
-        '401': { $ref: '#/components/responses/ApiError' }
-        '409': { $ref: '#/components/responses/ApiError' }
-        '413': { $ref: '#/components/responses/ApiError' }
-        '415': { $ref: '#/components/responses/ApiError' }
-        '429': { $ref: '#/components/responses/ApiError' }
-        '500': { $ref: '#/components/responses/ApiError' }
+        '201':
+          $ref: '#/components/responses/IssueSuccess'
+        '200':
+          $ref: '#/components/responses/IssueSuccess'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '409':
+          $ref: '#/components/responses/ApiError'
+        '413':
+          $ref: '#/components/responses/ApiError'
+        '415':
+          $ref: '#/components/responses/ApiError'
+        '429':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
     get:
-      security: [{ bearerAuth: [] }]
+      security:
+      - bearerAuth: []
       summary: List the current owner's issues by client creation time
       parameters:
-        - in: query
-          name: limit
-          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
-        - in: query
-          name: cursor
-          schema: { type: string }
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - in: query
+        name: cursor
+        schema:
+          type: string
       responses:
         '200':
           description: Page of issues
@@ -113,20 +223,32 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [issues, nextCursor]
+                required:
+                - issues
+                - nextCursor
                 properties:
-                  issues: { type: array, items: { $ref: '#/components/schemas/Issue' } }
-                  nextCursor: { type: [string, 'null'] }
-        '401': { $ref: '#/components/responses/ApiError' }
+                  issues:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Issue'
+                  nextCursor:
+                    type:
+                    - string
+                    - 'null'
+        '401':
+          $ref: '#/components/responses/ApiError'
   /issues/{id}:
     get:
-      security: [{ bearerAuth: [] }]
+      security:
+      - bearerAuth: []
       summary: Read an issue owned by the current user
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string, format: uuid }
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
       responses:
         '200':
           description: Issue
@@ -134,145 +256,540 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [issue]
+                required:
+                - issue
                 properties:
-                  issue: { $ref: '#/components/schemas/Issue' }
-        '401': { $ref: '#/components/responses/ApiError' }
-        '404': { $ref: '#/components/responses/ApiError' }
+                  issue:
+                    $ref: '#/components/schemas/Issue'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
   /issues/{issueId}/attachments/{attachmentId}/content:
     get:
-      security: [{ bearerAuth: [] }]
+      security:
+      - bearerAuth: []
       summary: Stream owner-only attachment bytes
       parameters:
-        - in: path
-          name: issueId
-          required: true
-          schema: { type: string, format: uuid }
-        - in: path
-          name: attachmentId
-          required: true
-          schema: { type: string, format: uuid }
-        - in: header
-          name: Range
-          schema: { type: string, example: 'bytes=0-1023' }
+      - in: path
+        name: issueId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: attachmentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: Range
+        schema:
+          type: string
+          example: bytes=0-1023
       responses:
-        '200': { description: Entire file, headers: { Accept-Ranges: { schema: { type: string } } } }
-        '206': { description: Byte range, headers: { Content-Range: { schema: { type: string } } } }
-        '401': { $ref: '#/components/responses/ApiError' }
-        '404': { $ref: '#/components/responses/ApiError' }
-        '416': { $ref: '#/components/responses/ApiError' }
+        '200':
+          description: Entire file
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+        '206':
+          description: Byte range
+          headers:
+            Content-Range:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+        '416':
+          $ref: '#/components/responses/ApiError'
   /health:
     get:
       summary: Process health
       responses:
-        '200': { description: Healthy, content: { application/json: { schema: { type: object, properties: { status: { const: ok } } } } } }
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    const: ok
   /ready:
     get:
       summary: Database and storage readiness
       responses:
-        '200': { description: Ready, content: { application/json: { schema: { type: object, properties: { status: { const: ok } } } } } }
-        '503': { $ref: '#/components/responses/ApiError' }
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    const: ok
+        '503':
+          $ref: '#/components/responses/ApiError'
+  /auth/refresh:
+    post:
+      summary: Rotate refresh and revoke previous session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                refreshToken:
+                  type: string
+              required:
+              - refreshToken
+            example:
+              refreshToken: opaque-base64url-token
+      responses:
+        '200':
+          description: Success; see docs/PHONE_AUTH.md for exact response and lifecycle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneSession'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '409':
+          $ref: '#/components/responses/ApiError'
+        '429':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
+  /auth/logout:
+    post:
+      summary: Revoke session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties: {}
+              required: []
+            example: {}
+      responses:
+        '204':
+          description: Success; see docs/PHONE_AUTH.md for exact response and lifecycle
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '409':
+          $ref: '#/components/responses/ApiError'
+        '429':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
+      security:
+      - bearerAuth: []
+  /auth/forget-device:
+    post:
+      summary: Revoke current device and its sessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties: {}
+              required: []
+            example: {}
+      responses:
+        '204':
+          description: Success; see docs/PHONE_AUTH.md for exact response and lifecycle
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '409':
+          $ref: '#/components/responses/ApiError'
+        '429':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
+      security:
+      - bearerAuth: []
+  /auth/phone/link:
+    post:
+      summary: Link phone and device to authenticated account; no ownership verification
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - phoneNumber
+              - address
+              - device
+              properties:
+                phoneNumber:
+                  type: string
+                address:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                device:
+                  $ref: '#/components/schemas/Device'
+      responses:
+        '200':
+          description: Linked session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneSession'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '409':
+          $ref: '#/components/responses/ApiError'
+        '429':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
 components:
   securitySchemes:
-    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   responses:
     ApiError:
       description: Safe error envelope with a request id
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema:
+            $ref: '#/components/schemas/Error'
     IssueSuccess:
-      description: First upload returns 201/replayed false; identical retry returns 200/replayed true
+      description: First upload returns 201/replayed false; identical retry returns
+        200/replayed true
       content:
         application/json:
           schema:
             type: object
-            required: [issue, replayed]
+            required:
+            - issue
+            - replayed
             properties:
-              issue: { $ref: '#/components/schemas/Issue' }
-              replayed: { type: boolean }
+              issue:
+                $ref: '#/components/schemas/Issue'
+              replayed:
+                type: boolean
   schemas:
     Error:
       type: object
-      required: [error, requestId]
+      required:
+      - error
+      - requestId
       properties:
-        requestId: { type: string, format: uuid }
+        requestId:
+          type: string
+          format: uuid
         error:
           type: object
-          required: [code, message, details]
+          required:
+          - code
+          - message
+          - details
           properties:
-            code: { type: string, enum: [VALIDATION_ERROR, UNAUTHORIZED, INVALID_CREDENTIALS, NOT_FOUND, EMAIL_EXISTS, ISSUE_CONTENT_CONFLICT, PAYLOAD_TOO_LARGE, UNSUPPORTED_MEDIA_TYPE, RATE_LIMITED, INTERNAL_ERROR, SERVICE_UNAVAILABLE, RANGE_NOT_SATISFIABLE] }
-            message: { type: string }
-            details: { type: array, items: { type: object } }
+            code:
+              type: string
+              enum:
+              - VALIDATION_ERROR
+              - UNAUTHORIZED
+              - INVALID_CREDENTIALS
+              - NOT_FOUND
+              - EMAIL_EXISTS
+              - ISSUE_CONTENT_CONFLICT
+              - PAYLOAD_TOO_LARGE
+              - UNSUPPORTED_MEDIA_TYPE
+              - RATE_LIMITED
+              - INTERNAL_ERROR
+              - SERVICE_UNAVAILABLE
+              - RANGE_NOT_SATISFIABLE
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
     User:
       type: object
-      required: [id, email, fullName]
+      required:
+      - id
+      - email
+      - fullName
       properties:
-        id: { type: string, format: uuid }
-        email: { type: string, format: email }
-        fullName: { type: string }
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        fullName:
+          type: string
     Session:
       type: object
-      required: [accessToken, tokenType, expiresIn, user]
+      required:
+      - accessToken
+      - tokenType
+      - expiresIn
+      - user
       properties:
-        accessToken: { type: string }
-        tokenType: { const: Bearer }
-        expiresIn: { const: 3600 }
-        user: { $ref: '#/components/schemas/User' }
+        accessToken:
+          type: string
+        tokenType:
+          const: Bearer
+        expiresIn:
+          const: 3600
+        user:
+          $ref: '#/components/schemas/User'
     Location:
       type: object
-      required: [latitude, longitude, accuracy, timestamp]
+      required:
+      - latitude
+      - longitude
+      - accuracy
+      - timestamp
       properties:
-        latitude: { type: number, minimum: -90, maximum: 90 }
-        longitude: { type: number, minimum: -180, maximum: 180 }
-        accuracy: { type: number, minimum: 0 }
-        timestamp: { type: integer, description: Unix milliseconds }
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+        accuracy:
+          type: number
+          minimum: 0
+        timestamp:
+          type: integer
+          description: Unix milliseconds
     ClientAttachment:
       type: object
       additionalProperties: false
-      required: [clientAttachmentId, kind, createdAt]
+      required:
+      - clientAttachmentId
+      - kind
+      - createdAt
       properties:
-        clientAttachmentId: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
-        kind: { type: string, enum: [photo, audio] }
-        createdAt: { type: string, format: date-time }
-        durationMs: { type: [number, 'null'], minimum: 0 }
+        clientAttachmentId:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,128}$
+        kind:
+          type: string
+          enum:
+          - photo
+          - audio
+        createdAt:
+          type: string
+          format: date-time
+        durationMs:
+          type:
+          - number
+          - 'null'
+          minimum: 0
     IssueUpload:
       type: object
       additionalProperties: false
-      required: [clientIssueId, clientCreatedAt, clientUpdatedAt, description, locationStatus, attachments]
+      required:
+      - clientIssueId
+      - clientCreatedAt
+      - clientUpdatedAt
+      - description
+      - locationStatus
+      - attachments
       properties:
-        clientIssueId: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
-        clientCreatedAt: { type: string, format: date-time }
-        clientUpdatedAt: { type: string, format: date-time }
-        description: { type: string, maxLength: 10000 }
-        locationStatus: { type: string, enum: [none, unavailable, captured] }
-        locationSource: { type: [string, 'null'], enum: [manual, null] }
-        location: { oneOf: [{ $ref: '#/components/schemas/Location' }, { type: 'null' }] }
-        attachments: { type: array, items: { $ref: '#/components/schemas/ClientAttachment' } }
+        clientIssueId:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,128}$
+        clientCreatedAt:
+          type: string
+          format: date-time
+        clientUpdatedAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+          maxLength: 10000
+        locationStatus:
+          type: string
+          enum:
+          - none
+          - unavailable
+          - captured
+        locationSource:
+          type:
+          - string
+          - 'null'
+          enum:
+          - manual
+          - null
+        location:
+          oneOf:
+          - $ref: '#/components/schemas/Location'
+          - type: 'null'
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientAttachment'
     Attachment:
       type: object
-      required: [id, clientAttachmentId, kind, mimeType, sizeBytes, sha256, createdAt, durationMs, contentPath]
+      required:
+      - id
+      - clientAttachmentId
+      - kind
+      - mimeType
+      - sizeBytes
+      - sha256
+      - createdAt
+      - durationMs
+      - contentPath
       properties:
-        id: { type: string, format: uuid }
-        clientAttachmentId: { type: string }
-        kind: { type: string, enum: [photo, audio] }
-        mimeType: { type: string }
-        sizeBytes: { type: integer }
-        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
-        createdAt: { type: string, format: date-time }
-        durationMs: { type: [number, 'null'] }
-        contentPath: { type: string }
+        id:
+          type: string
+          format: uuid
+        clientAttachmentId:
+          type: string
+        kind:
+          type: string
+          enum:
+          - photo
+          - audio
+        mimeType:
+          type: string
+        sizeBytes:
+          type: integer
+        sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        createdAt:
+          type: string
+          format: date-time
+        durationMs:
+          type:
+          - number
+          - 'null'
+        contentPath:
+          type: string
     Issue:
       type: object
-      required: [id, clientIssueId, clientCreatedAt, clientUpdatedAt, receivedAt, description, locationStatus, locationSource, location, attachments]
+      required:
+      - id
+      - clientIssueId
+      - clientCreatedAt
+      - clientUpdatedAt
+      - receivedAt
+      - description
+      - locationStatus
+      - locationSource
+      - location
+      - attachments
       properties:
-        id: { type: string, format: uuid }
-        clientIssueId: { type: string }
-        clientCreatedAt: { type: string, format: date-time }
-        clientUpdatedAt: { type: string, format: date-time }
-        receivedAt: { type: string, format: date-time }
-        description: { type: string }
-        locationStatus: { type: string, enum: [none, unavailable, captured] }
-        locationSource: { type: [string, 'null'] }
-        location: { oneOf: [{ $ref: '#/components/schemas/Location' }, { type: 'null' }] }
-        attachments: { type: array, items: { $ref: '#/components/schemas/Attachment' } }
+        id:
+          type: string
+          format: uuid
+        clientIssueId:
+          type: string
+        clientCreatedAt:
+          type: string
+          format: date-time
+        clientUpdatedAt:
+          type: string
+          format: date-time
+        receivedAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+        locationStatus:
+          type: string
+          enum:
+          - none
+          - unavailable
+          - captured
+        locationSource:
+          type:
+          - string
+          - 'null'
+        location:
+          oneOf:
+          - $ref: '#/components/schemas/Location'
+          - type: 'null'
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+    Device:
+      type: object
+      additionalProperties: false
+      required:
+      - platform
+      - identifierType
+      - identifier
+      properties:
+        platform:
+          enum:
+          - android
+          - ios
+        identifierType:
+          enum:
+          - android_id
+          - idfv
+        identifier:
+          type: string
+      description: 'android/android_id: 16 nonzero hex digits; ios/idfv: nonzero UUID.
+        Recognition only.'
+    PhoneUser:
+      type: object
+      required:
+      - id
+      - fullName
+      - phoneNumber
+      - address
+      properties:
+        id:
+          type: string
+          format: uuid
+        phoneNumber: *id001
+        fullName: *id003
+        address: *id004
+    PhoneSession:
+      type: object
+      required:
+      - accessToken
+      - tokenType
+      - user
+      - refreshToken
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          const: Bearer
+        expiresIn:
+          const: 3600
+        refreshToken:
+          type: string
+        user:
+          $ref: '#/components/schemas/PhoneUser'

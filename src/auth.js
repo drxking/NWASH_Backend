@@ -1,12 +1,12 @@
+import { installPhoneAuth, createSession, publicUser } from './phone-auth.js';
 import express from 'express';
 import { Prisma } from '@prisma/client';
 import argon2 from 'argon2';
-import { jwtVerify, SignJWT } from 'jose';
+import { jwtVerify } from 'jose';
 import { hashPassword, normalizeEmail, normalizeFullName, validPassword } from './security.js';
 import { RateLimiter } from './rate-limit.js';
 import { sendError, logServerError } from './http.js';
 
-const EXPIRES_IN = 3600;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const userSelect = { id: true, email: true, fullName: true };
 
@@ -17,18 +17,6 @@ function isObject(value) {
 function hasExactKeys(value, keys) {
   const actual = Object.keys(value);
   return actual.length === keys.length && keys.every((key) => Object.hasOwn(value, key));
-}
-
-async function session(user, config) {
-  const accessToken = await new SignJWT({})
-    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-    .setSubject(user.id)
-    .setIssuedAt()
-    .setIssuer(config.jwtIssuer)
-    .setAudience(config.jwtAudience)
-    .setExpirationTime(`${EXPIRES_IN}s`)
-    .sign(config.jwtSecret);
-  return { accessToken, tokenType: 'Bearer', expiresIn: EXPIRES_IN, user };
 }
 
 export async function installAuthRoutes(app, prisma, config, limiter = new RateLimiter()) {
@@ -44,6 +32,8 @@ export async function installAuthRoutes(app, prisma, config, limiter = new RateL
     next();
   });
 
+  installPhoneAuth(router, prisma, config, limiter, authenticate(prisma, config));
+
   router.post('/login', async (req, res) => {
     const body = req.body;
     const email = isObject(body) ? normalizeEmail(body.email) : null;
@@ -58,7 +48,7 @@ export async function installAuthRoutes(app, prisma, config, limiter = new RateL
       const user = await prisma.user.findUnique({ where: { email }, select: { ...userSelect, passwordHash: true, disabledAt: true } });
       const matches = await argon2.verify(user?.passwordHash ?? dummyHash, body.password);
       if (!user || user.disabledAt || !matches) return sendError(res, 'INVALID_CREDENTIALS');
-      return res.status(200).json(await session({ id: user.id, email: user.email, fullName: user.fullName }, config));
+      return res.status(200).json(await createSession(prisma, { id: user.id, email: user.email, fullName: user.fullName }, config));
     } catch {
       logServerError(req, 'INTERNAL_ERROR');
       return sendError(res, 'INTERNAL_ERROR');
@@ -82,7 +72,7 @@ export async function installAuthRoutes(app, prisma, config, limiter = new RateL
         data: { fullName, email, passwordHash },
         select: userSelect,
       }));
-      return res.status(201).json(await session(user, config));
+      return res.status(201).json(await createSession(prisma, user, config));
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         return sendError(res, 'EMAIL_EXISTS');
@@ -97,6 +87,7 @@ export async function installAuthRoutes(app, prisma, config, limiter = new RateL
   });
 
   router.use((_error, req, res, _next) => {
+    if (_error?.code === 'P2002') return sendError(res, 'PHONE_EXISTS');
     logServerError(req, 'INTERNAL_ERROR');
     return sendError(res, 'INTERNAL_ERROR');
   });
@@ -108,6 +99,7 @@ export function authenticate(prisma, config) {
     const authorization = req.get('Authorization');
     if (!authorization || !/^Bearer [^\s]+$/.test(authorization)) return sendError(res, 'UNAUTHORIZED');
     let subject;
+    let sessionId;
     try {
       const token = authorization.slice('Bearer '.length);
       const { payload } = await jwtVerify(token, config.jwtSecret, {
@@ -117,14 +109,19 @@ export function authenticate(prisma, config) {
       });
       if (typeof payload.exp !== 'number') return sendError(res, 'UNAUTHORIZED');
       subject = payload.sub;
+      sessionId = payload.sid;
     } catch {
       return sendError(res, 'UNAUTHORIZED');
     }
     if (!subject || !UUID.test(subject)) return sendError(res, 'UNAUTHORIZED');
     try {
-      const user = await prisma.user.findUnique({ where: { id: subject }, select: { ...userSelect, disabledAt: true } });
+      if (typeof sessionId !== "string" || !UUID.test(sessionId)) return sendError(res, "UNAUTHORIZED");
+      const active = await prisma.authSession.findFirst({ where: { id: sessionId, userId: subject, revokedAt: null, expiresAt: { gt: new Date() } } });
+      if (!active) return sendError(res, "UNAUTHORIZED");
+      req.authSession = active;
+      const user = await prisma.user.findUnique({ where: { id: subject }, select: { ...userSelect, phoneNumber: true, address: true, disabledAt: true } });
       if (!user || user.disabledAt) return sendError(res, 'UNAUTHORIZED');
-      req.authUser = { id: user.id, email: user.email, fullName: user.fullName };
+      req.authUser = publicUser(user);
       return next();
     } catch {
       logServerError(req, 'INTERNAL_ERROR');

@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     init: true
     working_dir: /app
-    command: ["sh", "-c", "npm run db:migrate && exec node --watch src/server.js"]
+    command: ["sh", "-c", "npm run db:generate && npm run db:migrate && exec node --watch src/server.js"]
     environment:
       HOST: 0.0.0.0
       PORT: 8000
@@ -21,6 +21,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-tap}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-tap_renovation}?schema=public
       TEST_DATABASE_URL: postgresql://${POSTGRES_USER:-tap}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres_test:5432/tap_renovation_test?schema=public
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      DEVICE_HMAC_SECRET: ${DEVICE_HMAC_SECRET:-}
+      DEVICE_HMAC_VERSION: ${DEVICE_HMAC_VERSION:-}
+      LEGACY_AUTH_ENABLED: ${LEGACY_AUTH_ENABLED:-true}
       JWT_ISSUER: ${JWT_ISSUER:-nwash-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-nwash-mobile}
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}

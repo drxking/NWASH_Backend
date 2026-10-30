@@ -18,6 +18,8 @@ Compose applies committed Prisma migrations before starting the API. It bind mou
 
 The API listens on `0.0.0.0:8000` inside its container. `API_BIND_IP` controls which host interface publishes port 8000. Set it to the computer's Wi-Fi IPv4 address for a physical phone and recreate the API container. The current development phone URL is `http://192.168.1.76:8000/api/v1` only when that is the computer's actual LAN address. USB development can use `adb reverse tcp:8000 tcp:8000` and localhost. Use HTTPS in production. Set `TRUST_PROXY_HOPS` only for a trusted reverse proxy.
 
+Phone signup and login use phone number + Android ID/iOS IDFV directly, without OTP or a device credential. See [phone contracts and rollout](docs/PHONE_AUTH.md) for endpoints, setup and limitations.
+
 ## Authentication and errors
 
 `POST /api/v1/auth/signup` accepts `fullName`, `email`, and `password`. `POST /api/v1/auth/login` accepts `email` and `password`. Both return `{accessToken, tokenType:"Bearer", expiresIn:3600, user:{id,email,fullName}}`. `GET /api/v1/auth/me` requires `Authorization: Bearer <token>`. Auth responses are `Cache-Control: no-store`. Existing accounts may log in with their existing passwords even if those passwords do not meet current signup length rules. Unknown emails use dummy Argon2id verification.

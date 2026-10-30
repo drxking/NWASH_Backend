@@ -267,7 +267,7 @@ test('owners are isolated; pagination follows client creation time and audio sup
     assert.equal(detail.response.status, 200);
     const notOwner = await readJson(ctx, b.accessToken, `/issues/${older.body.issue.id}`);
     assert.equal(notOwner.response.status, 404);
-    const path = older.body.issue.attachments[0].contentPath;
+    const path = older.body.issue.attachments[0].contentPath.slice('/api/v1'.length);
     const denied = await fetch(`${ctx.base}${path}`, { headers: { Authorization: `Bearer ${b.accessToken}` } });
     assert.equal(denied.status, 404);
     const noToken = await fetch(`${ctx.base}${path}`);

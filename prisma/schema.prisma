@@ -44,11 +44,16 @@ enum MediaKind {
 model User {
   id           String    @id @default(uuid()) @db.Uuid
   fullName     String    @map("full_name") @db.VarChar(100)
-  email        String    @unique @db.VarChar(254)
-  passwordHash String    @map("password_hash")
+  email        String?   @unique @db.VarChar(254)
+  passwordHash String?   @map("password_hash")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   disabledAt   DateTime? @map("disabled_at") @db.Timestamptz(3)
+  phoneNumber String? @unique @map("phone_number") @db.VarChar(16)
+  address String? @db.VarChar(500)
+  phoneVerifiedAt DateTime? @map("phone_verified_at") @db.Timestamptz(3)
+  devices DeviceBinding[]
+  sessions AuthSession[]
   issues       Issue[]
 
   @@map("users")
@@ -107,4 +112,47 @@ enum LocationSource {
 enum AttachmentKind {
   photo
   audio
+}
+
+model DeviceBinding {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform String
+  identifierType String @map("identifier_type")
+  identifierHmac String @map("identifier_hmac")
+  keyVersion String @map("key_version")
+  credentialHash String? @map("credential_hash")
+  credentialExpiresAt DateTime? @map("credential_expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  @@unique([userId, keyVersion, identifierHmac])
+  @@map("device_bindings")
+}
+model PhoneChallenge {
+  id String @id @db.Uuid
+  phoneNumber String @map("phone_number")
+  purpose String
+  userId String? @map("user_id") @db.Uuid
+  profile Json?
+  device Json
+  codeHash String @map("code_hash")
+  attempts Int @default(0)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@index([phoneNumber, createdAt])
+  @@map("phone_challenges")
+}
+model AuthSession {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId String? @map("device_id") @db.Uuid
+  refreshHash String @unique @map("refresh_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  @@index([userId])
+  @@map("auth_sessions")
 }
